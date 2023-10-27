@@ -48,6 +48,16 @@ var requirejs, require, define;
         return ostring.call(it) === '[object Array]';
     }
 
+    function isPromise(obj) {
+        if (!obj || typeof obj !== 'object') {
+          return false;
+        }
+        if (window.Promise && obj instanceof Promise) {
+          return true;
+        }
+        return typeof obj.then === 'function';
+      };
+
     /**
      * Helper function for iterating over an array. If the func returns
      * a true value, it will break out of the loop.
@@ -910,22 +920,49 @@ var requirejs, require, define;
 
                         this.exports = exports;
 
-                        if (this.map.isDefine && !this.ignore) {
-                            defined[id] = exports;
+                        if(isPromise(exports)){
+                            var that = this;
+                            exports.then((resolvedExports) => {
+                                if (that.map.isDefine && !this.ignore) {
+                                    defined[id] = resolvedExports;
+        
+                                    if (req.onResourceLoad) {
+                                        var resLoadMaps = [];
+                                        each(that.depMaps, function (depMap) {
+                                            resLoadMaps.push(depMap.normalizedMap || depMap);
+                                        });
+                                        req.onResourceLoad(context, that.map, resLoadMaps);
+                                    }
+                                }
+        
+                                //Clean up
+                                cleanRegistry(id);
+        
+                                that.defined = true;
 
-                            if (req.onResourceLoad) {
-                                var resLoadMaps = [];
-                                each(this.depMaps, function (depMap) {
-                                    resLoadMaps.push(depMap.normalizedMap || depMap);
-                                });
-                                req.onResourceLoad(context, this.map, resLoadMaps);
-                            }
+                                that.defineEmitted = true;
+                                that.emit('defined', resolvedExports);
+                                that.defineEmitComplete = true;
+                            });
                         }
-
-                        //Clean up
-                        cleanRegistry(id);
-
-                        this.defined = true;
+                        else{
+                            if (this.map.isDefine && !this.ignore) {
+                                defined[id] = exports;
+    
+                                if (req.onResourceLoad) {
+                                    var resLoadMaps = [];
+                                    each(this.depMaps, function (depMap) {
+                                        resLoadMaps.push(depMap.normalizedMap || depMap);
+                                    });
+                                    req.onResourceLoad(context, this.map, resLoadMaps);
+                                }
+                            }
+    
+                            //Clean up
+                            cleanRegistry(id);
+    
+                            this.defined = true;
+                        }  
                     }
 
                     //Finished the define stage. Allow calling check again
@@ -1693,6 +1730,8 @@ var requirejs, require, define;
              * @private
              */
             execCb: function (name, callback, args, exports) {
+                console.log("execCb: ", name, "callback:", callback);
+
                 return callback.apply(exports, args);
             },
 
